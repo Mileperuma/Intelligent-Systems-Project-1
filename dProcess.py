@@ -1,104 +1,150 @@
 # File: dProcess.py
-# Author: Matheesha
-# Description: Handles data loading, processing, splitting and saving stuff
-# Notes: This replaces the original bad data prep with something way more useful
+# Purpose: keep the data pipeline small and predictable: load OHLCV, scale it,
+#          split if needed, and turn rows into the sliding windows our LSTM expects.
+# Style: I explain decisions as I go, so future me (or a marker) can read intent
+#        without opening another document.
 
-import os
-import numpy as np
+import os          # folders and paths
+import time        # timestamps for fallback filenames when a CSV is locked
+import pickle      # persist the scaler so evaluation can invert the transform
+import numpy as np # arrays for model input
 import pandas as pd
 import yfinance as yf
-import pickle
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 
-# This function downloads stock data or loads it from local file (if saved before)
-def load_data(ticker, start, end, reload_csv=False, use_all_features=True, save_dir='datasets'):
-    os.makedirs(save_dir, exist_ok=True) # Just making sure the folder exists
 
-    csv_path = os.path.join(save_dir, f'{ticker}_{start}_{end}.csv')
+def load_data(ticker, start, end, reload_csv=False, use_all_features=True, save_dir='datasets'):
+    """
+    Download (or read cached) Yahoo Finance data, select features, scale to [0,1],
+    and return both the scaled frame and the raw frame.
+
+    Parameters (kept explicit so the call site reads like a sentence):
+      - ticker (str): the stock symbol I want, e.g., "AAPL".
+      - start (str | date-like): inclusive start date, e.g., "2010-01-01".
+      - end   (str | date-like): exclusive end date for yfinance.
+      - reload_csv (bool): False → reuse the cached CSV if present;
+                           True  → ignore cache and re-download fresh data.
+      - use_all_features (bool): True → keep OHLCV (Open, High, Low, Close, Volume);
+                                 False → keep only Close (useful for quick baselines).
+      - save_dir (str): folder where I cache the CSV and the scaler.
+
+    Returns:
+      - df_scaled (pd.DataFrame): scaled to [0,1], columns match the chosen features.
+      - df        (pd.DataFrame): the raw (unscaled) frame, same columns as above.
+      - scaler    (MinMaxScaler): fitted on the chosen columns so I can inverse-transform later.
+    """
+    os.makedirs(save_dir, exist_ok=True)  # create cache folder once; no error if it already exists
+
+    # cache paths are deterministic so the same (ticker, start, end) resolves to the same file
+    csv_path    = os.path.join(save_dir, f'{ticker}_{start}_{end}.csv')
     scaler_path = os.path.join(save_dir, f'{ticker}_scaler.pkl')
 
-    if not reload_csv and os.path.exists(csv_path): # If reload is False and we already have the CSV — just load it from disk
+    # Either reuse the CSV (fast) or fetch anew (slow but reliable when I change dates/features)
+    if (not reload_csv) and os.path.exists(csv_path):
+        # index_col=0 → treat the first column as the index (it’s the Date in our CSV)
+        # parse_dates=True → ensure the index is a proper DatetimeIndex for plotting later
         df = pd.read_csv(csv_path, index_col=0, parse_dates=True)
         print(f"Loaded saved data from {csv_path}")
     else:
-        # Download fresh data from Yahoo Finance
+        # Fresh download from Yahoo Finance; columns will include OHLCV (Adj Close may also appear)
+        # yfinance uses [start, end) semantics; that’s fine for our use.
         df = yf.download(ticker, start=start, end=end)
-        df.to_csv(csv_path)
-        print(f"Downloaded and saved data to {csv_path}")
+        # Try to write the cache file. If it’s open in Excel, Windows will lock it;
+        # I then fall back to a timestamped filename so the run can proceed.
+        try:
+            df.to_csv(csv_path)
+            print(f"Downloaded and saved data to {csv_path}")
+        except PermissionError:
+            alt = os.path.join(save_dir, f'{ticker}_{start}_{end}_{int(time.time())}.csv')
+            df.to_csv(alt)
+            print(f"CSV was locked. Saved to {alt}")
 
-    # NaNs are common in finance data — let's just drop them for now
-    df.dropna(inplace=True)
+    df.dropna(inplace=True)  # remove any incomplete rows early; plotting and scaling prefer clean data
 
-    # Choose features — either all (Open, High, Low, Close, Volume) or just Close
-    # Choose features — either all (Open, High, Low, Close, Volume) or just Close
-    if use_all_features:
-        features = ['Open', 'High', 'Low', 'Close', 'Volume']
-    else:
-        features = ['Close']
+    # Choose my feature set. For Task C.3 the visuals need OHLCV; the model can use all or just Close.
+    cols_all = ['Open', 'High', 'Low', 'Close', 'Volume']
+    features = cols_all if use_all_features else ['Close']
 
-    # Drop all columns not in the feature list (in case AAPL, Adj Close etc sneak in)
-    df = df[features]
+    # Keep only the chosen columns, coerce to numeric just in case, and drop any non-numeric leftovers
+    df = df[features].apply(pd.to_numeric, errors='coerce').dropna()
 
-    # Ensure all values are numeric (just in case some parsing failed)
-    df = df.apply(pd.to_numeric, errors='coerce')
-    df.dropna(inplace=True)
-
-    # Scale features to range [0, 1]
+    # Scale every chosen column to [0,1] so the LSTM doesn’t fight different magnitudes
     scaler = MinMaxScaler()
-    df_scaled = pd.DataFrame(scaler.fit_transform(df), columns=features, index=df.index)
+    df_scaled = pd.DataFrame(
+        scaler.fit_transform(df),   # fit on this exact set of columns, then transform them
+        columns=features,
+        index=df.index              # preserve dates so windows still align with time
+    )
 
-    # Save the scaler too so we can use it again later during evaluation
+    # Persist the scaler so evaluation can inverse_transform model outputs back to price space
     with open(scaler_path, 'wb') as f:
         pickle.dump(scaler, f)
         print(f"Saved scaler to {scaler_path}")
 
-    return df_scaled, df, scaler
+    return df_scaled, df, scaler  # scaled for the model, raw for plots, scaler for reversing later
 
 
-# Splits the dataset into training and testing sets
 def split_data(df, train_ratio=0.8, split_by='date', random_seed=42):
+    """
+    Split a DataFrame into train/test, either by time order (head/tail) or randomly.
+
+    Arguments:
+      - df (pd.DataFrame): the frame I want to split.
+      - train_ratio (float): proportion for training (e.g., 0.8 → 80% train, 20% test).
+      - split_by (str): 'date' → first chunk is train, tail is test (respects chronology);
+                        'random' → shuffle and split (useful for quick checks).
+      - random_seed (int): fixed seed so the random split is repeatable when I need it.
+    """
     if split_by == 'date':
-        # slicing the front part of the data as training (e.g. older data)
-        # and use the rest (recent data) as testing
-        split_idx = int(len(df) * train_ratio)
-        train_df = df.iloc[:split_idx]
-        test_df = df.iloc[split_idx:]
+        idx = int(len(df) * train_ratio)       # cut point
+        train_df, test_df = df.iloc[:idx], df.iloc[idx:]  # chronological split
     elif split_by == 'random':
+        # train_size controls the ratio; shuffle=True randomises rows; random_state makes it reproducible
         train_df, test_df = train_test_split(df, train_size=train_ratio, random_state=random_seed, shuffle=True)
     else:
-        # If user gives an invalid split method, throw a useful error
+        # I prefer a clear failure over a silent wrong split
         raise ValueError("Invalid split method. Use 'date' or 'random'.")
 
-    # Just print how much data went into train/test — helpful for debugging
     print(f"Data split into {len(train_df)} train rows and {len(test_df)} test rows")
     return train_df, test_df
 
 
-# Converts raw stock data into sequential windowed format for LSTM input
-def create_sequences(data, sequence_length):
-    x = []  # input features
-    y = []  # targets
+def create_sequences(data, sequence_length, target_index=0):
+    """
+    Turn rows into overlapping windows the LSTM understands.
 
-    # If it's a DataFrame, convert to NumPy array. If it's already an array, just use it
-    data_array = data.values if isinstance(data, pd.DataFrame) else data
+    Arguments:
+      - data (DataFrame or ndarray): features already in the order I want.
+      - sequence_length (int): how many past timesteps to include in each window (e.g., 50).
+      - target_index (int): which column the model should predict next (e.g., 3 → 'Close' in OHLCV).
 
-    # Loop through the data and create sliding windows of length = sequence_length
-    for i in range(len(data_array) - sequence_length):
-        seq = data_array[i:i + sequence_length]  # Grab a chunk of data
-        label = data_array[i + sequence_length][0]  # Target is the next 'Close' value (assumes it's the first col)
+    Returns:
+      - X: shape (N, sequence_length, num_features)
+      - y: shape (N,) — the next-step value from the chosen target column
+    """
+    x, y = [], []
+    # If a DataFrame arrives, I pull its underlying array; if it’s already an array, leave it alone.
+    arr = data.values if isinstance(data, pd.DataFrame) else data
 
-        # Sometimes the last sequence might not be full-length, so its always better double-check
-        if len(seq) == sequence_length:
-            x.append(seq)     # Add full sequence to feature list
-            y.append(label)   # Add corresponding label
+    # Slide one step at a time: for each i, take [i : i+L) as input and the value at i+L as the target.
+    for i in range(len(arr) - sequence_length):
+        seq = arr[i:i + sequence_length]             # L rows of features → one training example
+        tgt = arr[i + sequence_length][target_index] # the “next” value for the chosen target column
+        x.append(seq)
+        y.append(tgt)
 
-    # Convert lists into NumPy arrays so LSTM can train on them
+    # Convert lists to numpy arrays so Keras can read shapes without guessing
     return np.array(x), np.array(y)
 
-# This is like a wrapper to get all test data ready at once
-def prepare_test_data(test_df, sequence_length=50):
-    test_data = test_df.values
-    x_test, y_test = create_sequences(test_data, sequence_length)
-    print(f"Test sequences ready: {x_test.shape} {y_test.shape}")
-    return x_test, y_test
+
+def prepare_test_data(test_df, sequence_length=50, target_index=0):
+    """
+    Tiny helper: same windowing as above but named for clarity at call sites.
+
+    Arguments:
+      - test_df (DataFrame): data I want to window for evaluation.
+      - sequence_length (int): window length; must match the training setup.
+      - target_index (int): which column is the prediction target.
+    """
+    return create_sequences(test_df, sequence_length, target_index)

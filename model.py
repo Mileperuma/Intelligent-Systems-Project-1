@@ -1,36 +1,39 @@
 from keras.models import Sequential
 from keras.layers import LSTM, Dense, Dropout
 
-# This function builds and returns an LSTM model for time series prediction (e.g., stock prices)
+# build_lstm_model:
+# a small helper that constructs and compiles an LSTM network tailored for sequence prediction.
+# I keep the defaults simple but parameterised so I can tweak units or dropout if needed.
 def build_lstm_model(input_shape, lstm_units=64, dropout_rate=0.2):
     """
-    Builds and returns an LSTM model with the given input shape.
-
-    Parameters:
-    - input_shape: shape of X_train (timesteps, features)
-    - lstm_units: number of LSTM units per layer
-    - dropout_rate: dropout to reduce overfitting
+    Arguments:
+      - input_shape (tuple): (timesteps, features). For example, (50,5) means
+                             50 days of history, 5 features each (OHLCV).
+      - lstm_units (int): number of hidden units in each LSTM layer. More units
+                          let the network capture richer temporal patterns but
+                          also make it heavier to train.
+      - dropout_rate (float): proportion of units randomly dropped during training.
+                              A small guard against overfitting (e.g., 0.2 = 20%).
 
     Returns:
-    - Compiled LSTM model
+      - a compiled Keras Sequential model, ready to .fit() on windowed data.
     """
+    model = Sequential()  # simple stack of layers; no fancy branching required here
 
-    # We’re using Sequential API — just stack layers one after another
-    model = Sequential()
-
-    # First LSTM layer (with return_sequences=True to pass full sequence to next layer)
-    model.add(LSTM(units=lstm_units, return_sequences=True, input_shape=input_shape))
-    model.add(Dropout(dropout_rate))  # randomly turns off some neurons to reduce overfitting
-
-    # Second LSTM layer (last one — doesn’t need to return sequence)
-    model.add(LSTM(units=lstm_units))
+    # First LSTM: return_sequences=True so the whole sequence is passed on to the next LSTM.
+    model.add(LSTM(lstm_units, return_sequences=True, input_shape=input_shape))
+    # Dropout after each recurrent layer: intentionally forget some connections to improve generalisation.
     model.add(Dropout(dropout_rate))
 
-    # Final output layer — just 1 neuron to predict the next value
+    # Second LSTM: the final recurrent layer, outputs a vector (no need to return sequences here).
+    model.add(LSTM(lstm_units))
+    model.add(Dropout(dropout_rate))
+
+    # Dense(1): a single linear neuron — the next-step prediction for the chosen target column.
     model.add(Dense(1))
 
-    # Compile the model with Mean Squared Error loss and Adam optimizer
-    # MSE is good for regression problems like this one
+    # Compile the stack: 'adam' is a robust default optimiser,
+    # 'mse' is a good fit for regression problems like predicting stock prices.
     model.compile(optimizer='adam', loss='mse')
 
     return model
