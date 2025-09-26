@@ -14,13 +14,13 @@ from visualize import plot_candlestick_chart, plot_boxplot  # the two required p
 
 # ------------- Config -------------
 TICKER = "AAPL"               # stock symbol to evaluate
-START_DATE = "2010-01-01"     # inclusive start for the dataset
+START_DATE = "2022-01-01"     # inclusive start for the dataset
 END_DATE   = "2023-12-31"     # exclusive end for the dataset
 SEQ_LENGTH = 50               # window size used during training/evaluation
 # OHLCV order is ['Open','High','Low','Close','Volume']; Close sits at index 3.
 TARGET_INDEX  = 3             # predict 'Close' specifically
-GROUPING_DAYS = 3             # each candlestick represents 3 trading days
-BOX_WINDOW    = 10            # boxplot uses a rolling 10-day window
+GROUPING_DAYS = 15             # each candlestick represents 3 trading days
+BOX_WINDOW    = 15            # boxplot uses a rolling 10-day window
 OUTPUT_DIR    = "plots"       # where figures and metrics are saved
 
 # ------------- Load data (OHLCV for everything) -------------
@@ -113,10 +113,15 @@ plot_candlestick_chart(
 #   window_size  → length of each rolling window (in trading days)
 #   showfliers   → hide outliers to keep the overall shape readable (False here)
 plot_boxplot(
-    df=ohlcv_df, price_column='Close', window_size=BOX_WINDOW, ticker=TICKER,
-    figsize=(15,6), showfliers=False,
-    save_path=os.path.join(OUTPUT_DIR, f"boxplot_window{BOX_WINDOW}.png")
+    df=ohlcv_df,
+    price_column='Close',
+    window_size=30,  # Increase to reduce noise
+    ticker=TICKER,
+    figsize=(15,6),
+    showfliers=False,
+    save_path=os.path.join(OUTPUT_DIR, "boxplot_fixed.png")
 )
+
 
 # A small footer in the console so I know where to look for outputs
 print("Saved:", os.path.join(OUTPUT_DIR, "evaluation_metrics.json"))

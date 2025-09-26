@@ -139,14 +139,18 @@ def plot_boxplot(
 
     prices = df[price_column].dropna().to_numpy()  # clean 1-D array of values
 
-    box_data, labels = [], []  # collect window slices and matching end-date labels
+    # Generate full box_data and labels
+    box_data, labels = [], []
     W = int(window_size)
+    prices = df[price_column].dropna().to_numpy()
 
-    # Build overlapping windows: [0:W), [1:W+1), ...
-    # Each window becomes a box; the label uses the window's end date for orientation.
     for i in range(len(prices) - W + 1):
-        box_data.append(prices[i:i+W])
-        labels.append(str(df.index[i+W-1].date()))
+        box_data.append(prices[i:i + W])
+        labels.append(str(df.index[i + W - 1].date()))
+
+    # Subsample for clarity — plot every 5th box
+    box_data = box_data[::5]
+    labels = labels[::5]
 
     # Standard matplotlib boxplot; patch_artist=True fills the boxes for readability.
     fig = plt.figure(figsize=figsize)
@@ -155,8 +159,8 @@ def plot_boxplot(
     plt.xlabel("Window End Date"); plt.ylabel(price_column)
 
     # Tick thinning: show ~10 evenly spaced labels so the x-axis stays readable.
-    step = max(1, len(labels)//10)
-    plt.xticks(ticks=np.arange(1, len(labels)+1, step), labels=labels[::step], rotation=45)
+    step = max(1, len(labels) // 10)
+    plt.xticks(ticks=np.arange(1, len(labels) + 1, step), labels=labels[::step], rotation=45)
 
     # Light grid and tight layout so the figure drops neatly into the report.
     plt.grid(True, linestyle='--', alpha=0.4)
