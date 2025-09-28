@@ -63,6 +63,36 @@ def inverse_one_column(values_1d, scaler, target_index, n_features):
     inv = scaler.inverse_transform(pad)                        # back to price space
     return inv[:, target_index]                                # keep only the target column
 
+def predict_and_plot(model, X, y_true, scaler, n_steps=10, title="Multistep Prediction"):
+    """
+    Predicts and plots multistep output.
+    Assumes y_true is a multistep array.
+    """
+    y_pred = model.predict(X)
+
+    # Inverse scaling only for the target (Close) column
+    y_pred_rescaled = scaler.inverse_transform(
+        np.concatenate([np.zeros((y_pred.shape[0], 3)), y_pred, np.zeros((y_pred.shape[0], 1))], axis=1)
+    )[:, 3]
+
+    y_true_rescaled = scaler.inverse_transform(
+        np.concatenate([np.zeros((y_true.shape[0], 3)), y_true, np.zeros((y_true.shape[0], 1))], axis=1)
+    )[:, 3]
+
+    # Plot
+    plt.figure(figsize=(12, 5))
+    plt.plot(y_true_rescaled, label="True", linewidth=2)
+    plt.plot(y_pred_rescaled, label="Predicted", linestyle="--")
+    plt.title(title)
+    plt.xlabel("Time steps")
+    plt.ylabel("Close Price")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(f"experiments/{title.replace(' ', '_').lower()}.png")
+    plt.close()
+
+
 # Use the helper for both predictions and ground truth so they share the same path
 n_features = scaler.n_features_in_  # sanity: number of columns scaler was fit on
 pred_unscaled = inverse_one_column(pred_scaled.reshape(-1), scaler, TARGET_INDEX, n_features)

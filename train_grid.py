@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 from dProcess import load_data, split_data, create_sequences
+from evaluate import predict_and_plot
 from model import build_dl_model  # the model factory added for C.4
 
 
@@ -115,6 +116,12 @@ def run_one(cfg):
         batch_size=batch,
         callbacks=[ckpt, es],
         verbose=0
+    )
+    predict_and_plot(
+        model,
+        X_val, y_val, scaler,
+        n_steps=SEQ_LENGTH,
+        title=f"{layer_type}_{num_layers}L_{units}U_{batch}B"
     )
 
     # Pull the quantities I care about:

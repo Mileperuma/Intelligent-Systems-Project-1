@@ -7,6 +7,7 @@ from keras.callbacks import ModelCheckpoint   # checkpoint the best model during
 from dProcess import load_data, split_data, create_sequences  # my data helpers (download, split, window)
 from model import build_lstm_model     # the network factory (two LSTMs + Dropout + Dense)
 
+
 # ---------------- Configuration ----------------
 TICKER        = "AAPL"                 # which instrument to train on
 START_DATE    = "2022-01-01"           # inclusive start for the training dataset

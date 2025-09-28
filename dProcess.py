@@ -4,7 +4,7 @@
 # Style: I explain decisions as I go, so future me (or a marker) can read intent
 #        without opening another document.
 
-import os          # folders and paths
+import os          # folders and pathsa
 import time        # timestamps for fallback filenames when a CSV is locked
 import pickle      # persist the scaler so evaluation can invert the transform
 import numpy as np # arrays for model input
@@ -148,3 +148,27 @@ def prepare_test_data(test_df, sequence_length=50, target_index=0):
       - target_index (int): which column is the prediction target.
     """
     return create_sequences(test_df, sequence_length, target_index)
+
+def create_multistep_sequences(data, sequence_length, target_index=0, horizon=5, step=1):
+    """
+    Build (X, Y) where:
+      X shape = (N, sequence_length, num_features)
+      Y shape = (N, horizon)  → next 'horizon' values of the target column
+
+    Args:
+      data : DataFrame or ndarray of scaled features
+      sequence_length : int, input window length
+      target_index : int, which column is the target (3 → 'Close' in OHLCV)
+      horizon : int, number of future steps to predict (k)
+      step : int, shift between consecutive windows (default 1)
+
+    Returns:
+      X, Y
+    """
+    arr = data.values if isinstance(data, pd.DataFrame) else data
+    X, Y = [], []
+    last_start = len(arr) - sequence_length - horizon + 1
+    for i in range(0, max(0, last_start), step):
+        X.append(arr[i:i+sequence_length])
+        Y.append(arr[i+sequence_length:i+sequence_length+horizon, target_index])
+    return np.array(X), np.array(Y)
