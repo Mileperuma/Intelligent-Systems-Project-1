@@ -109,7 +109,6 @@ def split_data(df, train_ratio=0.8, split_by='date', random_seed=42):
     print(f"Data split into {len(train_df)} train rows and {len(test_df)} test rows")
     return train_df, test_df
 
-
 def create_sequences(data, sequence_length, target_index=0):
     """
     Turn rows into overlapping windows the LSTM understands.
