@@ -1,0 +1,37 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env
+
+# IDE / editor
+.idea/
+.vscode/
+*.iml
+
+# Microsoft Word temp/lock files
+~$*.docx
+~$*.xlsx
+
+# Generated model checkpoints (large binaries, reproducible by running train*.py)
+*.keras
+*.h5
+*.pkl
+*.npy
+
+# Generated plot directories (reproducible by running evaluate*.py / ensemble*.py)
+plots_c5/
+plots_c6/
+experiments/
+
+# Stray output files at repo root
+Figure_1.png
+
+# macOS / Windows artefacts
+.DS_Store
+Thumbs.db

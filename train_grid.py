@@ -8,10 +8,35 @@ import json
 import time
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 from dProcess import load_data, split_data, create_sequences
-from evaluate import predict_and_plot
-from model import build_dl_model  # the model factory added for C.4
+from model import build_dl_model
+
+
+def predict_and_plot(model, X, y_true, scaler, n_steps=10, title="Multistep Prediction"):
+    """Plot a single model's validation predictions against the ground truth."""
+    y_pred = model.predict(X)
+
+    # Padding trick: place the single-column output into the scaler's full feature
+    # matrix, invert, then extract the Close column (index 3).
+    def _inv(arr):
+        pad = np.concatenate(
+            [np.zeros((arr.shape[0], 3)), arr, np.zeros((arr.shape[0], 1))], axis=1
+        )
+        return scaler.inverse_transform(pad)[:, 3]
+
+    plt.figure(figsize=(12, 5))
+    plt.plot(_inv(y_true.reshape(-1, 1)), label="True", linewidth=2)
+    plt.plot(_inv(y_pred), label="Predicted", linestyle="--")
+    plt.title(title)
+    plt.xlabel("Time steps")
+    plt.ylabel("Close Price")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(os.path.join(EXP_DIR, f"{title.replace(' ', '_').lower()}.png"))
+    plt.close()
 
 
 # --------- Data config (reuse v0.3 settings) ----------

@@ -70,7 +70,7 @@ def build_dl_model(
     return model
 
 
-# Backward-compatible helper (used in v0.3); keeps your older scripts working.
+# Simple two-layer LSTM helper used by train.py for the single-step baseline.
 def build_lstm_model(input_shape, lstm_units=64, dropout_rate=0.2):
     model = Sequential()
     model.add(LSTM(lstm_units, return_sequences=True, input_shape=input_shape))

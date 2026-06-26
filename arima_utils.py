@@ -18,5 +18,3 @@ def forecast_rolling_matrix(result, test_len, horizon):
     for i in range(test_len - horizon + 1):
         mats.append(long_fc[i:i+horizon])
     return np.array(mats)
-
-

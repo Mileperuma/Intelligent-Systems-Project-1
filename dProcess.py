@@ -4,7 +4,7 @@
 # Style: I explain decisions as I go, so future me (or a marker) can read intent
 #        without opening another document.
 
-import os          # folders and pathsa
+import os          # folders and paths
 import time        # timestamps for fallback filenames when a CSV is locked
 import pickle      # persist the scaler so evaluation can invert the transform
 import numpy as np # arrays for model input
@@ -135,18 +135,6 @@ def create_sequences(data, sequence_length, target_index=0):
 
     # Convert lists to numpy arrays so Keras can read shapes without guessing
     return np.array(x), np.array(y)
-
-
-def prepare_test_data(test_df, sequence_length=50, target_index=0):
-    """
-    Tiny helper: same windowing as above but named for clarity at call sites.
-
-    Arguments:
-      - test_df (DataFrame): data I want to window for evaluation.
-      - sequence_length (int): window length; must match the training setup.
-      - target_index (int): which column is the prediction target.
-    """
-    return create_sequences(test_df, sequence_length, target_index)
 
 def create_multistep_sequences(data, sequence_length, target_index=0, horizon=5, step=1):
     """
